@@ -1,115 +1,230 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+// pages/composio-demo.js
+import { useState } from 'react';
+import { Composio } from "@composio/core";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+export default function ComposioDemo() {
+  const [apiKey, setApiKey] = useState('');
+  const [appName, setAppName] = useState('linear');
+  const [actionName, setActionName] = useState('');
+  const [actionParams, setActionParams] = useState('');
+  const [result, setResult] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [connectedApps, setConnectedApps] = useState([]);
+  const [availableActions, setAvailableActions] = useState([]);
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+  // Initialize Composio client
+  const getComposioClient = () => {
+    if (!apiKey) {
+      throw new Error("API key is required");
+    }
+    return new Composio({ apiKey });
+  };
 
-export default function Home() {
+  // Get user's connected apps
+  // Get user's connected apps using connectedAccounts.list()
+  const getConnectedApps = async () => {
+    setLoading(true);
+    try {
+      const composio = getComposioClient();
+      const accountsResp = await composio.connectedAccounts.list();
+      // Log the response for debugging
+      console.log('connectedAccounts.list() response:', accountsResp);
+      let accounts = [];
+      if (Array.isArray(accountsResp)) {
+        accounts = accountsResp;
+      } else if (accountsResp && Array.isArray(accountsResp.items)) {
+        accounts = accountsResp.items;
+      } else if (accountsResp && Array.isArray(accountsResp.data)) {
+        accounts = accountsResp.data;
+      } else if (accountsResp && accountsResp.results && Array.isArray(accountsResp.results)) {
+        accounts = accountsResp.results;
+      }
+      setConnectedApps(accounts);
+      setResult(`Found ${accounts.length} connected apps`);
+    } catch (error) {
+      setResult(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get available actions for an app
+  // Get available actions for an app using tools.getRawComposioTools
+  const getActions = async () => {
+    if (!appName) return;
+    setLoading(true);
+    try {
+      const composio = getComposioClient();
+      // Get all tools for the selected app/toolkit
+      const tools = await composio.tools.getRawComposioTools({ toolkits: [appName] });
+      // Log the full tools response for debugging
+      console.log('getRawComposioTools response:', tools);
+      // Each item in tools is already an action object
+      let actions = [];
+      if (Array.isArray(tools)) {
+        actions = tools;
+      }
+      setAvailableActions(actions);
+      setResult(`Found ${actions.length} actions for ${appName}`);
+    } catch (error) {
+      setResult(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Execute an action
+  const executeAction = async () => {
+    if (!actionName) return;
+    setLoading(true);
+    try {
+      const composio = getComposioClient();
+      let params = {};
+      try {
+        params = actionParams ? JSON.parse(actionParams) : {};
+      } catch (e) {
+        setResult("Error: Parameters must be valid JSON");
+        return;
+      }
+      // Find the selected action object by name
+      const selectedAction = availableActions.find(a => a.name === actionName);
+      if (!selectedAction) {
+        setResult("Error: Action not found");
+        return;
+      }
+      // Use the action's slug to execute
+      const response = await composio.tools.execute(selectedAction.slug, params);
+      setResult(JSON.stringify(response, null, 2));
+    } catch (error) {
+      setResult(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20`}
-    >
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/pages/index.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
+      <h1>Composio Integration Demo</h1>
+      <p>This demo shows how to integrate Composio with Next.js to connect to tools like Linear and Notion.</p>
+      
+      <div style={{ marginBottom: 20 }}>
+        <h2>1. API Configuration</h2>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <input
+            type="password"
+            placeholder="Enter your Composio API Key"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            style={{ flex: 1, padding: 8, border: '1px solid #ddd', borderRadius: 4 }}
+          />
+          <button 
+            onClick={getConnectedApps}
+            disabled={!apiKey || loading}
+            style={{ padding: '8px 16px', backgroundColor: '#0070f3', color: 'white', border: 'none', borderRadius: 4 }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            Get Connected Apps
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      </div>
+
+      {connectedApps.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <h2>2. Select App</h2>
+          <select 
+            value={appName} 
+            onChange={(e) => setAppName(e.target.value)}
+            style={{ width: '100%', padding: 8, marginBottom: 10 }}
+          >
+            <option value="">Select an app</option>
+            {connectedApps.map((app, index) => (
+              <option key={index} value={app.appName}>
+                {app.appName}
+              </option>
+            ))}
+          </select>
+          
+          <button 
+            onClick={getActions}
+            disabled={!appName || loading}
+            style={{ padding: '8px 16px', backgroundColor: '#0070f3', color: 'white', border: 'none', borderRadius: 4 }}
+          >
+            Get Actions
+          </button>
+        </div>
+      )}
+
+      {availableActions.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <h2>3. Execute Action</h2>
+          <select 
+            value={actionName} 
+            onChange={(e) => setActionName(e.target.value)}
+            style={{ width: '100%', padding: 8, marginBottom: 10 }}
+          >
+            <option value="">Select an action</option>
+            {availableActions.map((action, index) => (
+              <option key={index} value={action.name}>
+                {action.name} - {action.description}
+              </option>
+            ))}
+          </select>
+          
+          <textarea
+            placeholder="Action parameters (JSON)"
+            value={actionParams}
+            onChange={(e) => setActionParams(e.target.value)}
+            rows={4}
+            style={{ width: '100%', padding: 8, marginBottom: 10, border: '1px solid #ddd', borderRadius: 4 }}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          
+          <button 
+            onClick={executeAction}
+            disabled={!actionName || loading}
+            style={{ padding: '8px 16px', backgroundColor: '#0070f3', color: 'white', border: 'none', borderRadius: 4 }}
+          >
+            Execute Action
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 20 }}>
+        <h2>Result</h2>
+        {loading ? (
+          <p>Loading...</p>
+        ) : result ? (
+          <pre style={{ 
+            backgroundColor: '#f5f5f5', 
+            padding: 15, 
+            borderRadius: 4, 
+            overflow: 'auto',
+            whiteSpace: 'pre-wrap'
+          }}>
+            {result}
+          </pre>
+        ) : (
+          <p style={{ color: '#666' }}>Results will appear here after executing an action.</p>
+        )}
+      </div>
+
+      <div style={{ padding: 20, backgroundColor: '#f9f9f9', borderRadius: 8 }}>
+        <h2>How to Set Up Composio</h2>
+        <ol>
+          <li>Sign up for a Composio account at <a href="https://composio.dev" target="_blank">composio.dev</a></li>
+          <li>Get your API key from the dashboard</li>
+          <li>Connect apps (Linear, Notion, etc.) through the Composio interface</li>
+          <li>Use the API key in your Next.js application</li>
+        </ol>
+        
+        <h3>Example: Creating a Linear Issue</h3>
+        <p>For Linear, you might use the <code>create_issue</code> action with parameters like:</p>
+        <pre>
+          {`{
+  "title": "New Task",
+  "description": "Task description here",
+  "teamId": "your-team-id"
+}`}
+        </pre>
+      </div>
     </div>
   );
 }
